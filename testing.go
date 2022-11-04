@@ -21,7 +21,7 @@ var (
 )
 
 // Return configurations optimized for in-memory
-func inmemConfig(t *testing.T) *Config {
+func InmemConfig(t *testing.T) *Config {
 	conf := DefaultConfig()
 	conf.HeartbeatTimeout = 50 * time.Millisecond
 	conf.ElectionTimeout = 50 * time.Millisecond
@@ -678,7 +678,7 @@ type MakeClusterOpts struct {
 // each other.
 func makeCluster(t *testing.T, opts *MakeClusterOpts) *cluster {
 	if opts.Conf == nil {
-		opts.Conf = inmemConfig(t)
+		opts.Conf = InmemConfig(t)
 	}
 
 	c := &cluster{
@@ -812,4 +812,108 @@ func FileSnapTest(t *testing.T) (string, *FileSnapshotStore) {
 	}
 	snap.noSync = true
 	return dir, snap
+}
+
+// makeCluster will return a cluster with the given config and number of peers.
+// If bootstrap is true, the servers will know about each other before starting,
+// otherwise their transports will be wired up but they won't yet have configured
+// each other.
+func MakeClusterWithTransport(t *testing.T, trans Transport, opts *MakeClusterOpts) *cluster {
+	if opts.Conf == nil {
+		opts.Conf = InmemConfig(t)
+	}
+
+	c := &cluster{
+		observationCh: make(chan Observation, 1024),
+		conf:          opts.Conf,
+		// Propagation takes a maximum of 2 heartbeat timeouts (time to
+		// get a new heartbeat that would cause a commit) plus a bit.
+		propagateTimeout: opts.Conf.HeartbeatTimeout*2 + opts.Conf.CommitTimeout,
+		longstopTimeout:  5 * time.Second,
+		logger:           newTestLoggerWithPrefix(t, "cluster"),
+		failedCh:         make(chan struct{}),
+	}
+	if opts.LongstopTimeout > 0 {
+		c.longstopTimeout = opts.LongstopTimeout
+	}
+
+	c.t = t
+	var configuration Configuration
+
+	// Setup the stores and transports
+	for i := 0; i < opts.Peers; i++ {
+		dir, err := ioutil.TempDir("", "raft")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		store := NewInmemStore()
+		c.dirs = append(c.dirs, dir)
+		c.stores = append(c.stores, store)
+		if opts.ConfigStoreFSM {
+			c.fsms = append(c.fsms, &MockFSMConfigStore{
+				FSM: &MockFSM{},
+			})
+		} else {
+			var fsm FSM
+			if opts.MakeFSMFunc != nil {
+				fsm = opts.MakeFSMFunc()
+			} else {
+				fsm = &MockFSM{}
+			}
+			c.fsms = append(c.fsms, fsm)
+		}
+
+		dir2, snap := FileSnapTest(t)
+		c.dirs = append(c.dirs, dir2)
+		c.snaps = append(c.snaps, snap)
+
+		addr, trans := NewInmemTransport("")
+		c.trans = append(c.trans, trans)
+		localID := ServerID(fmt.Sprintf("server-%s", addr))
+		if opts.Conf.ProtocolVersion < 3 {
+			localID = ServerID(addr)
+		}
+		configuration.Servers = append(configuration.Servers, Server{
+			Suffrage: Voter,
+			ID:       localID,
+			Address:  addr,
+		})
+	}
+
+	// Wire the transports together
+	c.FullyConnect()
+
+	// Create all the rafts
+	c.startTime = time.Now()
+	for i := 0; i < opts.Peers; i++ {
+		logs := c.stores[i]
+		store := c.stores[i]
+		snap := c.snaps[i]
+		trans := c.trans[i]
+
+		peerConf := opts.Conf
+		peerConf.LocalID = configuration.Servers[i].ID
+		peerConf.Logger = newTestLoggerWithPrefix(t, string(configuration.Servers[i].ID))
+
+		if opts.Bootstrap {
+			err := BootstrapCluster(peerConf, logs, store, snap, trans, configuration)
+			if err != nil {
+				t.Fatalf("BootstrapCluster failed: %v", err)
+			}
+		}
+
+		raft, err := NewRaft(peerConf, c.fsms[i], logs, store, snap, trans)
+		if err != nil {
+			t.Fatalf("NewRaft failed: %v", err)
+		}
+
+		raft.RegisterObserver(NewObserver(c.observationCh, false, nil))
+		if err != nil {
+			t.Fatalf("RegisterObserver failed: %v", err)
+		}
+		c.rafts = append(c.rafts, raft)
+	}
+
+	return c
 }
