@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.12.3
-// source: commands.proto
+// source: appendentries.proto
 
 package commands
 
@@ -35,7 +35,7 @@ func NewCommandsClient(cc grpc.ClientConnInterface) CommandsClient {
 
 func (c *commandsClient) AppendEntries(ctx context.Context, in *AppendEntriesRequest, opts ...grpc.CallOption) (*AppendEntriesResponse, error) {
 	out := new(AppendEntriesResponse)
-	err := c.cc.Invoke(ctx, "/Commands/AppendEntries", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/hashicorp.raft.internal.appendentries.Commands/AppendEntries", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func _Commands_AppendEntries_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/Commands/AppendEntries",
+		FullMethod: "/hashicorp.raft.internal.appendentries.Commands/AppendEntries",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CommandsServer).AppendEntries(ctx, req.(*AppendEntriesRequest))
@@ -92,7 +92,7 @@ func _Commands_AppendEntries_Handler(srv interface{}, ctx context.Context, dec f
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Commands_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "Commands",
+	ServiceName: "hashicorp.raft.internal.appendentries.Commands",
 	HandlerType: (*CommandsServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -101,5 +101,5 @@ var Commands_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "commands.proto",
+	Metadata: "appendentries.proto",
 }

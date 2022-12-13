@@ -5,13 +5,13 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-// CommandsServerService must be embedded to have forward compatible implementations.
-type CommandsServerService struct {
+// AppendEntriesServerService must be embedded to have forward compatible implementations.
+type AppendEntriesServerService struct {
 	UnimplementedCommandsServer
 	RPCch chan raft.RPC
 }
 
-func (cs *CommandsServerService) AppendEntries(ctx context.Context, req *AppendEntriesRequest) (*AppendEntriesResponse, error) {
+func (cs *AppendEntriesServerService) AppendEntries(ctx context.Context, req *AppendEntriesRequest) (*AppendEntriesResponse, error) {
 	r := new(raft.AppendEntriesRequest)
 	AppendEntriesRequestToStruct(req, r)
 	rpc := raft.RPC{}

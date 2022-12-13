@@ -2,6 +2,7 @@ package grpc_transport
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/raft"
 	commands "github.com/hashicorp/raft/proto"
 	grpcpool "github.com/processout/grpc-go-pool"
@@ -34,17 +35,20 @@ func (g GrpcTransport) AppendEntriesPipeline(id raft.ServerID, target raft.Serve
 
 func (g GrpcTransport) AppendEntries(id raft.ServerID, target raft.ServerAddress, args *raft.AppendEntriesRequest, resp *raft.AppendEntriesResponse) error {
 	ctx := context.Background()
+	fmt.Printf("dhayachi:: grpc appendentry\n")
 	r := new(commands.AppendEntriesRequest)
 	commands.AppendEntriesRequestFromStruct(args, r)
 	conn, err := grpc.Dial(string(target), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	defer conn.Close()
 	if err != nil {
-		return err
+		fmt.Printf("dhayachi:: falling back to append entry 1\n")
+		return g.trans.AppendEntries(id, target, args, resp)
 	}
 	client := commands.NewCommandsClient(conn)
 	entries, err := client.AppendEntries(ctx, r)
 	if err != nil {
-		return err
+		fmt.Printf("dhayachi:: falling back to append entry 2\n")
+		return g.trans.AppendEntries(id, target, args, resp)
 	}
 	commands.AppendEntriesResponseToStruct(entries, resp)
 
@@ -101,7 +105,7 @@ func NewGrpcTransport(addr raft.ServerAddress, timeout time.Duration, trans raft
 			rpcs <- rpc
 		}
 	}()
-	srv := &commands.CommandsServerService{RPCch: rpcs}
+	srv := &commands.AppendEntriesServerService{RPCch: rpcs}
 	commands.RegisterCommandsServer(server, srv)
 	return addr, &GrpcTransport{Server: server, addr: addr, consumer: rpcs, trans: trans}
 

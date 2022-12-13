@@ -33,13 +33,13 @@ func TestGrpc(t *testing.T) {
 	store3 := raft.NewInmemStore()
 	snap3 := raft.NewInmemSnapshotStore()
 	_, trans3 := raft.NewInmemTransport("127.0.0.1:12347")
-	_, transport3 := NewGrpcTransport("127.0.0.1:12347", time.Second, trans3)
-	_, err = raft.NewRaft(conf3, &raft.MockFSM{}, store3, store3, snap3, transport3)
+	//_, transport3 := NewGrpcTransport("127.0.0.1:12347", time.Second, trans3)
+	_, err = raft.NewRaft(conf3, &raft.MockFSM{}, store3, store3, snap3, trans3)
 
 	require.NoError(t, err)
 
 	trans1.Connect("127.0.0.1:12346", trans2)
 	trans1.Connect("127.0.0.1:12347", trans3)
 	r1.BootstrapCluster(raft.Configuration{Servers: []raft.Server{{ID: "grpc1", Address: "127.0.0.1:12345"}, {ID: "grpc2", Address: "127.0.0.1:12346"}, {ID: "grpc3", Address: "127.0.0.1:12347"}}})
-	time.Sleep(30 * time.Second)
+	time.Sleep(10 * time.Second)
 }
