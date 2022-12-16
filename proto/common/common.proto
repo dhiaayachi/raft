@@ -1,12 +1,12 @@
 syntax = "proto3";
 package hashicorp.raft.internal.common;
-option go_package = "github.com/hashicorp/raft/commands";
+option go_package = "github.com/hashicorp/raft/proto/common";
 
 import "google/protobuf/timestamp.proto";
 // mog annotation:
 //
 // target=github.com/hashicorp/raft.RPCHeader
-// output=command.gen.go
+// output=common.gen.go
 // name=Struct
 // ignore-fields=state,sizeCache,unknownFields
 message RPCHeader {
@@ -24,7 +24,7 @@ message RPCHeader {
 // mog annotation:
 //
 // target=github.com/hashicorp/raft.Log
-// output=command.gen.go
+// output=common.gen.go
 // name=Struct
 // ignore-fields=state,sizeCache,unknownFields
 message Log  {

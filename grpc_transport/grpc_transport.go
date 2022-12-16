@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/raft"
-	commands "github.com/hashicorp/raft/proto"
+	"github.com/hashicorp/raft/proto/appendentries"
 	grpcpool "github.com/processout/grpc-go-pool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -45,21 +45,21 @@ func (g GRPCTransport) AppendEntriesPipeline(id raft.ServerID, target raft.Serve
 func (g GRPCTransport) AppendEntries(id raft.ServerID, target raft.ServerAddress, args *raft.AppendEntriesRequest, resp *raft.AppendEntriesResponse) error {
 	ctx := context.Background()
 	fmt.Printf("dhayachi:: grpc appendentry\n")
-	r := new(commands.AppendEntriesRequest)
-	commands.AppendEntriesRequestFromStruct(args, r)
+	r := new(appendentries.AppendEntriesRequest)
+	appendentries.AppendEntriesRequestFromStruct(args, r)
 	conn, err := grpc.Dial(string(target), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	defer conn.Close()
 	if err != nil {
 		fmt.Printf("dhayachi:: falling back to append entry 1\n")
 		return err
 	}
-	client := commands.NewCommandsClient(conn)
+	client := appendentries.NewCommandsClient(conn)
 	entries, err := client.AppendEntries(ctx, r)
 	if err != nil {
 		fmt.Printf("dhayachi:: falling back to append entry 2\n")
 		return err
 	}
-	commands.AppendEntriesResponseToStruct(entries, resp)
+	appendentries.AppendEntriesResponseToStruct(entries, resp)
 
 	return nil
 }
@@ -103,8 +103,8 @@ func NewGRPCTransport(addr raft.ServerAddress, timeout time.Duration) (raft.Serv
 		}
 	}()
 	rpcs := make(chan raft.RPC)
-	srv := &commands.AppendEntriesServerService{RPCch: rpcs}
-	commands.RegisterCommandsServer(server, srv)
+	srv := &appendentries.AppendEntriesServerService{RPCch: rpcs}
+	appendentries.RegisterCommandsServer(server, srv)
 	return addr, &GRPCTransport{Server: server, addr: addr, consumer: rpcs}
 
 }

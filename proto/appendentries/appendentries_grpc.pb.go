@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.12.3
-// source: appendentries.proto
+// source: proto/appendentries/appendentries.proto
 
-package commands
+package appendentries
 
 import (
 	context "context"
@@ -101,5 +101,5 @@ var Commands_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "appendentries.proto",
+	Metadata: "proto/appendentries/appendentries.proto",
 }
