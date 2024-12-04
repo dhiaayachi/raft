@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package raft
 
 import (
@@ -60,7 +63,7 @@ type followerReplication struct {
 	triggerCh chan struct{}
 
 	// triggerDeferErrorCh is used to provide a backchannel. By sending a
-	// deferErr, the sender can be notifed when the replication is done.
+	// deferErr, the sender can be notified when the replication is done.
 	triggerDeferErrorCh chan *deferError
 
 	// lastContact is updated to the current time whenever any response is

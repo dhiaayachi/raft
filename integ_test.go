@@ -1,9 +1,12 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package raft
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -68,22 +71,22 @@ func (r *RaftEnv) Restart(t *testing.T) {
 	r.raft = raft
 }
 
-func MakeRaft(t *testing.T, conf *Config, bootstrap bool) *RaftEnv {
+func MakeRaft(tb testing.TB, conf *Config, bootstrap bool) *RaftEnv {
 	// Set the config
 	if conf == nil {
-		conf = inmemConfig(t)
+		conf = inmemConfig(tb)
 	}
 
-	dir, err := ioutil.TempDir("", "raft")
+	dir, err := os.MkdirTemp("", "raft")
 	if err != nil {
-		t.Fatalf("err: %v ", err)
+		tb.Fatalf("err: %v ", err)
 	}
 
 	stable := NewInmemStore()
 
 	snap, err := NewFileSnapshotStore(dir, 3, nil)
 	if err != nil {
-		t.Fatalf("err: %v", err)
+		tb.Fatalf("err: %v", err)
 	}
 
 	env := &RaftEnv{
@@ -95,7 +98,7 @@ func MakeRaft(t *testing.T, conf *Config, bootstrap bool) *RaftEnv {
 	}
 	trans, err := NewTCPTransport("localhost:0", nil, 2, time.Second, nil)
 	if err != nil {
-		t.Fatalf("err: %v", err)
+		tb.Fatalf("err: %v", err)
 	}
 
 	env.logger = hclog.New(&hclog.LoggerOptions{
@@ -112,14 +115,14 @@ func MakeRaft(t *testing.T, conf *Config, bootstrap bool) *RaftEnv {
 		})
 		err = BootstrapCluster(conf, stable, stable, snap, trans, configuration)
 		if err != nil {
-			t.Fatalf("err: %v", err)
+			tb.Fatalf("err: %v", err)
 		}
 	}
 	env.logger.Info("starting node", "addr", trans.LocalAddr())
 	conf.Logger = env.logger
 	raft, err := NewRaft(conf, env.fsm, stable, stable, snap, trans)
 	if err != nil {
-		t.Fatalf("err: %v", err)
+		tb.Fatalf("err: %v", err)
 	}
 	env.raft = raft
 	return env
@@ -154,7 +157,7 @@ WAIT:
 	goto CHECK
 }
 
-func WaitFuture(f Future, t *testing.T) error {
+func WaitFuture(f Future) error {
 	timer := time.AfterFunc(1000*time.Millisecond, func() {
 		panic(fmt.Errorf("timeout waiting for future %v", f))
 	})
@@ -162,10 +165,10 @@ func WaitFuture(f Future, t *testing.T) error {
 	return f.Error()
 }
 
-func NoErr(err error, t *testing.T) {
-	t.Helper()
+func NoErr(err error, tb testing.TB) {
+	tb.Helper()
 	if err != nil {
-		t.Fatalf("err: %v", err)
+		tb.Fatalf("err: %v", err)
 	}
 }
 
@@ -242,7 +245,7 @@ func TestRaft_Integ(t *testing.T) {
 			futures = append(futures, leader.raft.Apply(logBytes(i, sz), 0))
 		}
 		for _, f := range futures {
-			NoErr(WaitFuture(f, t), t)
+			NoErr(WaitFuture(f), t)
 			leader.logger.Debug("applied", "index", f.Index(), "size", sz)
 		}
 		totalApplied += n
@@ -251,7 +254,7 @@ func TestRaft_Integ(t *testing.T) {
 	applyAndWait(env1, 100, 10)
 
 	// Do a snapshot
-	NoErr(WaitFuture(env1.raft.Snapshot(), t), t)
+	NoErr(WaitFuture(env1.raft.Snapshot()), t)
 
 	// Join a few nodes!
 	var envs []*RaftEnv
@@ -259,7 +262,7 @@ func TestRaft_Integ(t *testing.T) {
 		conf.LocalID = ServerID(fmt.Sprintf("next-batch-%d", i))
 		env := MakeRaft(t, conf, false)
 		addr := env.trans.LocalAddr()
-		NoErr(WaitFuture(env1.raft.AddVoter(conf.LocalID, addr, 0, 0), t), t)
+		NoErr(WaitFuture(env1.raft.AddVoter(conf.LocalID, addr, 0, 0)), t)
 		envs = append(envs, env)
 	}
 
@@ -271,7 +274,7 @@ func TestRaft_Integ(t *testing.T) {
 	applyAndWait(leader, 100, 10)
 
 	// Snapshot the leader
-	NoErr(WaitFuture(leader.raft.Snapshot(), t), t)
+	NoErr(WaitFuture(leader.raft.Snapshot()), t)
 
 	CheckConsistent(append([]*RaftEnv{env1}, envs...), t)
 
@@ -283,7 +286,7 @@ func TestRaft_Integ(t *testing.T) {
 	applyAndWait(leader, 100, 10000)
 
 	// snapshot the leader [leaders log should be compacted past the disconnected follower log now]
-	NoErr(WaitFuture(leader.raft.Snapshot(), t), t)
+	NoErr(WaitFuture(leader.raft.Snapshot()), t)
 
 	// Unfortunately we need to wait for the leader to start backing off RPCs to the down follower
 	// such that when the follower comes back up it'll run an election before it gets an rpc from
@@ -323,7 +326,7 @@ func TestRaft_Integ(t *testing.T) {
 		conf.LocalID = ServerID(fmt.Sprintf("final-batch-%d", i))
 		env := MakeRaft(t, conf, false)
 		addr := env.trans.LocalAddr()
-		NoErr(WaitFuture(leader.raft.AddVoter(conf.LocalID, addr, 0, 0), t), t)
+		NoErr(WaitFuture(leader.raft.AddVoter(conf.LocalID, addr, 0, 0)), t)
 		envs = append(envs, env)
 
 		leader, err = WaitForAny(Leader, append([]*RaftEnv{env1}, envs...))
@@ -335,8 +338,8 @@ func TestRaft_Integ(t *testing.T) {
 	NoErr(err, t)
 
 	// Remove the old nodes
-	NoErr(WaitFuture(leader.raft.RemoveServer(rm1.raft.localID, 0, 0), t), t)
-	NoErr(WaitFuture(leader.raft.RemoveServer(rm2.raft.localID, 0, 0), t), t)
+	NoErr(WaitFuture(leader.raft.RemoveServer(rm1.raft.localID, 0, 0)), t)
+	NoErr(WaitFuture(leader.raft.RemoveServer(rm2.raft.localID, 0, 0)), t)
 
 	// Shoot the leader
 	env1.Release()
@@ -389,7 +392,7 @@ func TestRaft_RestartFollower_LongInitialHeartbeat(t *testing.T) {
 				conf.LocalID = ServerID(fmt.Sprintf("next-batch-%d", i))
 				env := MakeRaft(t, conf, false)
 				addr := env.trans.LocalAddr()
-				NoErr(WaitFuture(env1.raft.AddVoter(conf.LocalID, addr, 0, 0), t), t)
+				NoErr(WaitFuture(env1.raft.AddVoter(conf.LocalID, addr, 0, 0)), t)
 				envs = append(envs, env)
 			}
 			allEnvs := append([]*RaftEnv{env1}, envs...)
@@ -412,7 +415,7 @@ func TestRaft_RestartFollower_LongInitialHeartbeat(t *testing.T) {
 			seeNewLeader := func(o *Observation) bool { _, ok := o.Data.(LeaderObservation); return ok }
 			leaderCh := make(chan Observation)
 			// TODO Closing this channel results in panics, even though we're calling Release.
-			//defer close(leaderCh)
+			// defer close(leaderCh)
 			leaderChanges := new(uint32)
 			go func() {
 				for range leaderCh {
@@ -487,4 +490,99 @@ func TestRaft_RestartFollower_LongInitialHeartbeat(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRaft_PreVote_LeaderSpam test that when a leader spam the followers
+// with pre-vote requests they can still transition to candidate.
+// The reason this test need to live in here is that we need the transport heartbeat fast-path
+// to use as a trick to avoid heartbeat keeping the cluster stable.
+// That fast-path only exists in the net transport.
+func TestRaft_PreVote_LeaderSpam(t *testing.T) {
+	CheckInteg(t)
+	conf := DefaultConfig()
+	conf.LocalID = ServerID("first")
+	conf.HeartbeatTimeout = 50 * time.Millisecond
+	conf.ElectionTimeout = 50 * time.Millisecond
+	conf.LeaderLeaseTimeout = 50 * time.Millisecond
+	conf.CommitTimeout = 5 * time.Second
+	conf.SnapshotThreshold = 100
+	conf.TrailingLogs = 10
+
+	// Create a single node
+	leader := MakeRaft(t, conf, true)
+	NoErr(WaitFor(leader, Leader), t)
+
+	// Join a few nodes!
+	var followers []*RaftEnv
+	for i := 0; i < 2; i++ {
+		conf.LocalID = ServerID(fmt.Sprintf("next-batch-%d", i))
+		env := MakeRaft(t, conf, false)
+		addr := env.trans.LocalAddr()
+		NoErr(WaitFuture(leader.raft.AddVoter(conf.LocalID, addr, 0, 0)), t)
+		followers = append(followers, env)
+	}
+
+	// Wait for a leader
+	_, err := WaitForAny(Leader, append([]*RaftEnv{leader}, followers...))
+	NoErr(err, t)
+
+	CheckConsistent(append([]*RaftEnv{leader}, followers...), t)
+
+	leaderT := leader.raft.trans
+
+	// spam all the followers with pre-vote requests from the leader
+	// those requests should be granted as long as the leader haven't changed.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for {
+			ticker := time.NewTicker(conf.HeartbeatTimeout / 2)
+			for _, f := range followers {
+				rsp := RequestPreVoteResponse{}
+				reqPreVote := RequestPreVoteRequest{
+					RPCHeader:    leader.raft.getRPCHeader(),
+					Term:         leader.raft.getCurrentTerm() + 1,
+					LastLogIndex: leader.raft.getLastIndex(),
+					LastLogTerm:  leader.raft.getCurrentTerm(),
+				}
+				// We don't need to check the error here because when leader change
+				// it will start failing with "rejecting pre-vote request since we have a leader"
+				_ = leaderT.(WithPreVote).RequestPreVote(f.raft.localID, f.raft.localAddr, &reqPreVote, &rsp)
+			}
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	time.Sleep(time.Second)
+
+	// for all followers ignore heartbeat from current leader, so we can transition to candidate state.
+	// the purpose of this test is to verify that spamming nodes with pre-votes don't cause them to never
+	// transition to Candidates.
+	for _, f := range followers {
+		//copy f to avoid data race
+		f1 := f
+		f1.trans.SetHeartbeatHandler(func(rpc RPC) {
+			if a, ok := rpc.Command.(*AppendEntriesRequest); ok {
+				if ServerID(a.GetRPCHeader().ID) == leader.raft.localID {
+					resp := &AppendEntriesResponse{
+						RPCHeader:      f1.raft.getRPCHeader(),
+						Term:           f1.raft.getCurrentTerm(),
+						LastLog:        f1.raft.getLastIndex(),
+						Success:        false,
+						NoRetryBackoff: false,
+					}
+					rpc.Respond(resp, nil)
+				} else {
+					f.raft.processHeartbeat(rpc)
+				}
+			}
+		})
+	}
+	time.Sleep(1 * time.Second)
+	// New leader should be one of the  former followers.
+	_, err = WaitForAny(Leader, followers)
+	NoErr(err, t)
 }
