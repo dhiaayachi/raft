@@ -15,6 +15,9 @@ type RPCHeader struct {
 	ID []byte
 	// Addr is the ServerAddr of the node sending the RPC Request or Response
 	Addr []byte
+
+	// Meta contain metadata added by the transport
+	Meta map[string]any
 }
 
 // WithRPCHeader is an interface that exposes the RPC header.
